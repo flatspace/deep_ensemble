@@ -28,17 +28,16 @@ class ProbabilisticNet(nn.Module):
 
     def forward(self, input):
         net = self.inner_net.forward(input)
+        #return F.softplus(net) + torch.autograd.Variable(torch.ones(1)*1e-6)
         mean = net[:, 0]
         var = F.softplus(net[:, 1]) + torch.autograd.Variable(torch.ones(1)*1e-6)
-        return torch.t(torch.stack((mean, var)))
+        return mean, var
 
     @staticmethod
-    def nll(x, y):
-        means = x[:, 0]
-        vars = x[:, 1]
-        a = torch.log(vars)/2
-        b = 0.5/vars
-        return torch.sum(a+b*torch.pow(y-means, 2))
+    def nll(means, vars, y):
+        a = torch.log(vars)
+        b = 1.0/vars
+        return torch.sum(a+b*torch.pow(y.squeeze()-means, 2))
 
 
 def base_model(sizes):
@@ -60,28 +59,28 @@ def train_net(sizes, learning_rate, eps, alpha, max_iter, use_adv):
     losses = np.zeros(max_iter)
     for i in range(0, max_iter):
         optimizer.zero_grad()
-        indices = np.random.choice(np.arange(len(xs)), size=batch_size)
-        x = Variable(torch.from_numpy(xs[indices]+np.random.randn(batch_size)), requires_grad=True)
-        t = Variable(torch.from_numpy(ts[indices]))
-        pred = net(x)
-        loss = alpha*loss_fn(pred, t)
+        indices = np.random.choice(np.arange(len(xs)), replace=False, size=batch_size)
+        x = Variable(torch.from_numpy(xs[indices]), requires_grad=True)
+        t = Variable(torch.from_numpy(ts[indices])) + 0.1*Variable(torch.FloatTensor(len(indices)).random_())
+        means, vars = net(x)
+        loss = loss_fn(means, vars, t)
         # Backward pass: compute gradient of the loss with respect to model
         # parameters
-        loss.backward(retain_graph=True)
-        if use_adv:
-            adv_sign = torch.sign(x.grad)
-            x_adv = x + eps * adv_sign
-            x_adv.volatile = False
-            pred_adv = net(x_adv)
-            loss_adv = (1-alpha)*loss_fn(pred_adv, t)
-            loss_adv.backward()
-        # Calling the step function on an Optimizer makes an update to its
-        # parameters
+        loss.backward()
+
+        #adv_sign = torch.sign(x.grad)
+        #x_adv = x + eps * adv_sign
+        #x_adv.volatile = False
+
+        #optimizer.zero_grad()
+        #x_joint = torch.cat((x, x_adv))
+        #pred_joint = net(x_joint)
+        #loss_joint = loss_fn(pred_joint, torch.cat((t,t)))
+        #loss_joint.backward()
+        #losses[i] += loss_joint.data.numpy()[0]
         optimizer.step()
-        joint_loss = loss.data[0] + loss_adv.data[0]
-        losses[i] += joint_loss
         if i % 100 == 0:
-            print('iteration {} with loss {}'.format(i, joint_loss))
+            print('iteration {} with loss {}'.format(i, loss.data.numpy()[0]))
     return net
 
 
@@ -89,26 +88,26 @@ def ensemble_mean_var(ensemble, x):
     en_mean = np.zeros(len(x))
     en_var = np.zeros(len(x))
     for model in ensemble:
-        pred_ts = model(x)
-        mean = pred_ts[:, 0].data.numpy()
-        var = pred_ts[:, 1].data.numpy()
+        mean, var = model(x)
+        mean = mean.data.numpy()
+        var = var.data.numpy()
         en_mean += mean
-        en_var += var + mean ** 2
+        en_var += var + mean**2
     en_mean /= len(ensemble)
     en_var /= len(ensemble)
-    en_var -= en_mean ** 2
+    en_var -= en_mean**2
     return en_mean, en_var
 
 
 if __name__ == '__main__':
-    xs = np.expand_dims(np.linspace(-5, 5, num=800, dtype=np.float32), -1)
+    xs = np.expand_dims(np.linspace(-5, 5, num=100000, dtype=np.float32), -1)
     ts = np.cos(xs)
 
     learning_rate = 1e-3
     sizes = [1, 16, 16, 1]
-    eps = 1e-2
+    eps = 1e-3
     alpha=0.5
-    max_iter = 800
+    max_iter = 500
 
     # number of nets in the ensemble
     K = 1
