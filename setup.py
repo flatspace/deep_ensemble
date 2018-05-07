@@ -5,31 +5,26 @@
 
 from setuptools import setup, find_packages
 
-with open('README.rst') as readme_file:
+with open('README.MD') as readme_file:
     readme = readme_file.read()
 
-with open('HISTORY.rst') as history_file:
-    history = history_file.read()
-
 requirements = [
-    'torch', 'matplotlib',# TODO: put package requirements here
+    'torch', 'matplotlib', 'numpy',
 ]
 
 setup_requirements = [
     'pytest-runner',
-    # TODO(flatspace): put setup requirements (distutils extensions, etc.) here
 ]
 
 test_requirements = [
     'pytest',
-    # TODO: put package test requirements here
 ]
 
 setup(
     name='deep_ensemble',
     version='0.1.0',
     description="Deep Ensemble implementation",
-    long_description=readme + '\n\n' + history,
+    long_description=readme,
     author="Brecht Dierckx",
     author_email='brecht.dierckx@gmail.com',
     url='https://github.com/flatspace/deep_ensemble',
